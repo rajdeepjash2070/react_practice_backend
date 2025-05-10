@@ -6,6 +6,7 @@ import mysql from "mysql2";
 import path from "path";
 import dotenv from "dotenv";
 import { fileURLToPath } from "url";
+import fs from "fs";
 
 // These two lines are needed to replicate __dirname in ES Modules
 const __filename = fileURLToPath(import.meta.url);
@@ -13,15 +14,15 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config();
 const app = express();
-app.use(cors());
+app.use(cors({ origin: "*" }));
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 const db = mysql.createConnection({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
+  host: process.env.DB_HOST || "localhost",
+  user: process.env.DB_USER || "root",
+  password: process.env.DB_PASSWORD || "Rajdeep@0342",
+  database: process.env.DB_NAME || "crud",
 });
 
 db.connect((err) => {
@@ -61,36 +62,107 @@ app.post("/books", upload.single("cover"), (req, res) => {
   });
 });
 
+// app.put("/books/:id", upload.single("cover"), (req, res) => {
+//   const { id } = req.params;
+//   const { title, description, price } = req.body;
+//   const cover = req.file ? req.file.filename : null;
+
+//   let q = "UPDATE books SET title = ?, description = ?, price = ?";
+//   const values = [title, description, price];
+
+//   if (cover) {
+//     q += ", cover = ?";
+//     values.push(cover);
+//   }
+
+//   q += " WHERE id = ?";
+//   values.push(id);
+
+//   db.query(q, values, (err) => {
+//     if (err) return res.status(500).json(err);
+//     res.json({ message: "Book updated" });
+//   });
+// });
+
+
+
 app.put("/books/:id", upload.single("cover"), (req, res) => {
   const { id } = req.params;
   const { title, description, price } = req.body;
-  const cover = req.file ? req.file.filename : null;
+  const newCover = req.file ? req.file.filename : null;
 
-  let q = "UPDATE books SET title = ?, description = ?, price = ?";
-  const values = [title, description, price];
-
-  if (cover) {
-    q += ", cover = ?";
-    values.push(cover);
-  }
-
-  q += " WHERE id = ?";
-  values.push(id);
-
-  db.query(q, values, (err) => {
+  // Step 1: Get the old cover image
+  db.query("SELECT cover FROM books WHERE id = ?", [id], (err, data) => {
     if (err) return res.status(500).json(err);
-    res.json({ message: "Book updated" });
+    if (data.length === 0) return res.status(404).json({ message: "Book not found" });
+
+    const oldCover = data[0].cover;
+
+    // Step 2: Build the update query
+    let q = "UPDATE books SET title = ?, description = ?, price = ?";
+    const values = [title, description, price];
+
+    if (newCover) {
+      q += ", cover = ?";
+      values.push(newCover);
+    }
+
+    q += " WHERE id = ?";
+    values.push(id);
+
+    // Step 3: Perform the update
+    db.query(q, values, (err) => {
+      if (err) return res.status(500).json(err);
+
+      // Step 4: Delete the old cover image if a new one was uploaded
+      if (newCover && oldCover) {
+        const oldImagePath = path.join("uploads", oldCover);
+        fs.unlink(oldImagePath, (unlinkErr) => {
+          if (unlinkErr) {
+            console.warn(`Failed to delete old cover image: ${oldImagePath}`);
+          }
+        });
+      }
+
+      res.json({ message: "Book updated successfully" });
+    });
   });
 });
+
+// app.delete("/books/:id", (req, res) => {
+//   const { id } = req.params;
+//   db.query("DELETE FROM books WHERE id = ?", [id], (err) => {
+//     if (err) return res.status(500).json(err);
+//     res.json({ message: "Book deleted" });
+//   });
+// });
 
 app.delete("/books/:id", (req, res) => {
   const { id } = req.params;
-  db.query("DELETE FROM books WHERE id = ?", [id], (err) => {
+
+  // Step 1: Get the image filename
+  db.query("SELECT cover FROM books WHERE id = ?", [id], (err, data) => {
     if (err) return res.status(500).json(err);
-    res.json({ message: "Book deleted" });
+    if (data.length === 0) return res.status(404).json({ message: "Book not found" });
+
+    const imagePath = path.join("uploads", data[0].cover);
+
+    // Step 2: Delete the book record from the database
+    db.query("DELETE FROM books WHERE id = ?", [id], (err) => {
+      if (err) return res.status(500).json(err);
+
+      // Step 3: Delete the image file from disk
+      fs.unlink(imagePath, (unlinkErr) => {
+        if (unlinkErr) {
+          console.warn(`Image cleanup failed or file not found: ${imagePath}`);
+        }
+        res.json({ message: "Book and image deleted" });
+      });
+    });
   });
 });
 
-app.listen(8800, () => {
-  console.log("Server running on port 8800");
+let PORT=process.env.DB_PORT;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
