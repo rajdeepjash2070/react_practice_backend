@@ -18,12 +18,16 @@ app.use(cors({ origin: "*" }));
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-const db = mysql.createConnection({
-  host: process.env.DB_HOST || "localhost",
-  user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD || "Rajdeep@0342",
-  database: process.env.DB_NAME || "crud",
-});
+const urlDB=`mysql://${process.env.MYSQLUSER}:${process.env.MYSQLPASSWORD}@${process.env.MYSQLHOST}:${MYSQLPORT}/${MYSQLDATABASE}`;
+
+const connection=mysql.createConnection(urlDB);
+
+// const db = mysql.createConnection({
+//   host: process.env.DB_HOST || "localhost",
+//   user: process.env.DB_USER || "root",
+//   password: process.env.DB_PASSWORD || "Rajdeep@0342",
+//   database: process.env.DB_NAME || "crud",
+// });
 
 db.connect((err) => {
   if (err) throw err;
